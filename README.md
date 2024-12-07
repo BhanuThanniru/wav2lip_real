@@ -58,7 +58,7 @@ Python Libraries that are included in requirements.txt:
 * **pyaudio:** PyAudio is a Python library for capturing and playing audio streams.
 
 **Download the pre-trained models:** 
-
+* Make sure to create a checkpoints folder in which it should include the .pth files
 * wav2lip\_gan.pth from the link in the Model Weights section and place it in the designated checkpoints folder.  
 * mobilenet.pth model for the face detection in the checkpoints folder.
 
@@ -108,18 +108,40 @@ In this application, audio is captured by using PyAudio and processed in real ti
 
 **Audio Capture:**
 
-**![][image1]**  
-**![][image2]**
-
-**![][image3]**
-
+## Code
+```python
+self.CHUNK = 1024  # Number of audio frames per buffer during audio capture.
+        self.FORMAT = pyaudio.paInt16 # Audio format: 16-bit PCM
+        self.CHANNELS = 1  # Number of audio channels
+        self.RATE = 16000  # sample rate (samples per second)
+        self.RECORD_SECONDS = 0.5  # Duration of audio recording per capture
+p = pyaudio.PyAudio()
+    stream = p.open(format=inference_obj.FORMAT,
+                    channels=inference_obj.CHANNELS,
+                    rate=inference_obj.RATE,
+                    input=True,
+                    frames_per_buffer=inference_obj.CHUNK)
+def record_audio(self, audio_stream):
+        stime = time()
+        print("Recording audio")
+        frames = []
+        for i in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
+            frames.append(audio_stream.read(self.CHUNK, exception_on_overflow=False))
+        print("Recording time: ", time() - stime)
+        audio_data = np.frombuffer(b''.join(frames), dtype=np.int16)
+        # Check if audio data has sufficient amplitude
+        if np.max(np.abs(audio_data)) < 500:
+            print("Warning: Recorded audio is too quiet.")
+        print(f"Recorded audio length: {len(audio_data)}")
+        return audio_data
+```
 ### **Optimization**
 
 Open Visual Inference and Neural Network Optimization (OpenVINO), offers tools and libraries designed to speed up deep learning inference on Intel hardware, including CPUs, GPUs, and VPUs. We utilize OpenVINO to enhance the Wav2Lip model's performance during lip-syncing video inference. By integrating OpenVINO, we achieve faster and more efficient processing on Intel platforms, making it ideal for real-time lip-syncing applications where low latency is essential for a smooth and responsive user experience.
 
 **Model Conversion to OpenVINO:**
 
-	We use ONNX as an intermediate, to convert the PyTorch model to OpenVINO model, the following steps are to be performed:
+We use ONNX as an intermediate, to convert the PyTorch model to OpenVINO model, the following steps are to be performed:
 
 * Load the PyTorch model.  
 * Load the trained weights into the model.  
@@ -128,8 +150,56 @@ Open Visual Inference and Neural Network Optimization (OpenVINO), offers tools a
 * Read the onnx model.  
 * Make sure the openvino library is installed and imported.  
 * Save the model using save\_model() method which is from openvino.runtime.
+  ## Code
+```python
+def convert_pytorch_to_openvino(checkpoint_path, onnx_path):
+    # Load your PyTorch model
+    model = Wav2Lip()  # Ensure to initialize your model correctly
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["state_dict"])
+    model.eval()  # Set to evaluation mode
 
+    # Create dummy input for exporting
+    batch_size = 128
+    img_batch = np.random.rand(batch_size, 6, 96, 96)  # Adjust as needed
+    mel_batch = np.random.rand(batch_size, 1, 80, 16)  # Adjust as needed
+    
+    img_batch_tensor = torch.FloatTensor(img_batch).to(device)
+    mel_batch_tensor = torch.FloatTensor(mel_batch).to(device)
 
+    # Export to ONNX format
+    print("Exporting to ONNX format...")
+    torch.onnx.export(model, 
+                      (mel_batch_tensor, img_batch_tensor),  # Using mel_batch and img_batch
+                      onnx_path, 
+                      export_params=True, 
+                      opset_version=11, 
+                      do_constant_folding=True, 
+                      input_names=['audio_sequences', 'face_sequences'],  # New input names
+                      output_names=['output'],  # Specify output names
+                      dynamic_axes={'audio_sequences': {0: 'batch_size', 1: 'time_size'},  # Variable axes for mel input
+                                    'face_sequences': {0: 'batch_size', 1: 'channel'},  # Variable axes for img input
+                                    'output': {0: 'batch_size'}})  # Variable batch size for output
+
+    print(f"ONNX model exported to {onnx_path}")
+
+    #onnx model to openvino model
+    core = Core()
+    devices = core.available_devices
+    print(devices[0])
+    model_onnx = core.read_model(model=onnx_path)
+    #compiled_model_onnx = core.compile_model(model=model_onnx, device_name=devices[0])
+
+    save_model(model_onnx, output_model="wav2lip_openvino_model.xml")
+    # model = convert_model(onnx_path)
+    # save_model(model, 'openvino_model/wav2lip_model.xml')
+    print("OpenVINO model saved")
+
+if __name__ == '__main__':
+    checkpoint_path = 'checkpoints/wav2lip_gan.pth'  # Path to your PyTorch checkpoint
+    onnx_path = 'wav2lip_model.onnx'  # Path to save the ONNX model
+    convert_pytorch_to_openvino(checkpoint_path, onnx_path)
+```
 ![][image4]
 
 ### **Real-Time Lip-Syncing App Using Streamlit**
@@ -164,7 +234,7 @@ cd wav2lip\_real
 
 #### **2\. Set Up a Virtual Environment**
 
-    **Using Streamlit:**
+Using Streamlit:
 
 Install streamlit.
 
@@ -193,25 +263,25 @@ It automatically redirects and opens in the browser and in case if doesn’t, op
 
 1. ### Image Upload:
 
-   * ### Users upload an image of a face.
+   *  Users upload an image of a face.
 
-   * ### The uploaded image is displayed.
+   *  The uploaded image is displayed.
 
 2. ### Model Conversion:
 
-   * ### Before starting inference, the application checks if the OpenVINO model exists. If not, it converts the PyTorch model to OpenVINO format.
+   *  Before starting inference, the application checks if the OpenVINO model exists. If not, it converts the PyTorch model to OpenVINO format.
 
 3. ### Start Inference:
 
-   * ### Begins real-time lip-syncing by processing the uploaded image and audio stream.
+   *  Begins real-time lip-syncing by processing the uploaded image and audio stream.
 
 4. ### Stop Inference:
 
-   * ### Pauses the lip-syncing process.
+   *  Pauses the lip-syncing process.
 
 5. ### Clear Uploaded Images:
 
-   * ### Clears the current image and allows for a new upload.
+   *  Clears the current image and allows for a new upload.
 
 ## **Troubleshooting**
 
