@@ -36,7 +36,7 @@ To run this project, ensure your system has the following:
 # Follow these steps to set up the project:
 
 **Clone the repository:**  
-git clone https://github.com/BhanuSaisreeThanniru/wav2lip\_real.git  
+git clone https://github.com/BhanuThanniru/wav2lip_real.git  
 cd wav2lip\_real
 
 **Install dependencies:** pip install \-r requirements.txt
