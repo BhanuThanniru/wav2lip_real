@@ -228,7 +228,7 @@ This streamlit based application enables real-time lip-syncing by uploading an i
 
 #### **1\. Clone the Repository**
 
-git clone https://github.com/BhanuSaisreeThanniru/wav2lip\_real.git
+git clone https://github.com/BhanuThanniru/wav2lip\_real.git
 
 cd wav2lip\_real
 
